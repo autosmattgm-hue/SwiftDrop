@@ -1,0 +1,18 @@
+{
+  "name": "SwiftDrop — Share files instantly",
+  "short_name": "SwiftDrop",
+  "description": "Send files, videos and audio directly between devices. Peer-to-peer, no uploads.",
+  "start_url": "./#splash=true",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b1020",
+  "theme_color": "#0b1020",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

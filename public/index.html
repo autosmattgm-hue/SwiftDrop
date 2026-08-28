@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0b1020">
+<meta name="description" content="SwiftDrop — share files, videos and audio directly between devices. Peer-to-peer, no uploads, insanely fast.">
+<title>SwiftDrop — Share files instantly</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%23ff7a18'/><stop offset='1' stop-color='%23ff2d78'/></linearGradient></defs><rect width='100' height='100' rx='22' fill='url(%23g)'/><path d='M56 16 28 57h18l-4 28L70 44H52l4-28z' fill='white'/></svg>">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ============ HOME ============ -->
+  <section id="home" class="screen">
+    <div class="hero">
+      <div class="logo-ring">
+        <svg viewBox="0 0 100 100" class="logo-svg" aria-hidden="true">
+          <defs>
+            <linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#ff7a18"/>
+              <stop offset="1" stop-color="#ff2d78"/>
+            </linearGradient>
+          </defs>
+          <rect width="100" height="100" rx="24" fill="url(#lg)"/>
+          <path d="M56 16 28 57h18l-4 28L70 44H52l4-28z" fill="#fff"/>
+        </svg>
+      </div>
+      <h1 class="brand">SwiftDrop</h1>
+      <p class="tag">Share files, videos &amp; audio.<br>Direct between devices. Faster than ever.</p>
+
+      <button id="btn-create" class="btn btn-primary big">
+        <span class="btn-plus">＋</span> Create a Room
+      </button>
+
+      <div class="join-box">
+        <input id="join-code" maxlength="6" autocomplete="off" autocapitalize="characters"
+               spellcheck="false" placeholder="Enter room code">
+        <button id="btn-join" class="btn btn-primary">Join</button>
+      </div>
+
+      <button id="btn-scan" class="btn btn-ghost" hidden>&#128247; Scan QR</button>
+
+      <div class="name-box">
+        <label for="my-name">Your device name</label>
+        <input id="my-name" maxlength="24" placeholder="e.g. My Phone">
+      </div>
+    </div>
+    <p class="foot-note">Peer-to-peer via WebRTC — data flows straight between devices.<br>Nothing is stored on the server.</p>
+  </section>
+
+  <!-- ============ ROOM ============ -->
+  <section id="room" class="screen" hidden>
+    <header class="room-head">
+      <div class="code-box">
+        <div class="rc-label">ROOM CODE</div>
+        <div class="rc-main">
+          <span id="room-code">------</span>
+          <button id="btn-copy" class="icon-btn" title="Copy code">
+            <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12zm4 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h12z"/></svg>
+          </button>
+          <button id="btn-qr" class="icon-btn" title="Show QR">
+            <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M3 5a2 2 0 0 1 2-2h4v2H5v4H3zm6 14H5v-4H3v4a2 2 0 0 0 2 2h4zm10 0h-4v-2h4v-2h2v4a2 2 0 0 1-2 2zM13 3h4a2 2 0 0 1 2 2v4h-2V5h-4zm2 8h2v2h-2zm2 2h2v2h-2zm-4-4h2v2h-2zm-4 2h2v2H9zm2 2h2v2h-2zm-4 4h2v2H7zm10 0h2v2h-2z"/></svg>
+          </button>
+          <button id="btn-leave" class="icon-btn leave" title="Leave room">
+            <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M19 3H5a2 2 0 0 0-2 2v4h2V5h14v14H5v-4H3v4a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zM9 8l-1.4 1.4L10.2 12H3v2h7.2l-2.6 2.6L9 18l5-5z"/></svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <div id="status-line" class="status-line">
+      <span class="dot"></span><span id="status-text">Connecting…</span>
+    </div>
+
+    <div class="section-title">Devices <span id="peer-count" class="count-badge">0</span></div>
+    <div id="peer-list" class="peer-list"></div>
+
+    <div id="dropzone" class="dropzone">
+      <input type="file" id="file-input" multiple hidden>
+      <div class="dz-body">
+        <div class="dz-icon">＋</div>
+        <p class="dz-main">Drop files here<br>or tap to browse</p>
+        <p class="dz-sub">Photos · videos · audio · documents · anything</p>
+      </div>
+    </div>
+
+    <div class="section-title">Transfers <span id="transfer-count" class="count-badge">0</span></div>
+    <div id="transfer-list" class="transfer-list"></div>
+    <div id="transfer-empty" class="empty-hint">Files you send will appear here</div>
+
+    <div class="section-title">Received <span id="received-count" class="count-badge">0</span></div>
+    <div id="received-list" class="received-list"></div>
+    <div id="received-empty" class="empty-hint">Files you receive will appear here</div>
+
+    <p class="foot-note" id="speed-note"></p>
+  </section>
+</div>
+
+<!-- QR overlay -->
+<div id="qr-overlay" class="overlay" hidden>
+  <div class="qr-card">
+    <h3>Scan to join</h3>
+    <canvas id="qr-canvas"></canvas>
+    <div class="qr-code-text" id="qr-code-text"></div>
+    <button id="btn-qr-close" class="btn btn-ghost">Close</button>
+  </div>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<script src="vendor/qrcode.js"></script>
+<script src="client.js"></script>
+</body>
+</html>
