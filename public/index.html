@@ -48,7 +48,26 @@
         <input id="my-name" maxlength="24" placeholder="e.g. My Phone">
       </div>
     </div>
-    <p class="foot-note">Peer-to-peer via WebRTC — data flows straight between devices.<br>Nothing is stored on the server.</p>
+
+    <div class="help">
+      <h2>How it works</h2>
+      <div class="help-grid">
+        <div class="help-card">
+          <span class="help-n">1</span>
+          <p><b>Create a room</b> on one device.<br>You get a 6-letter code + link.</p>
+        </div>
+        <div class="help-card">
+          <span class="help-n">2</span>
+          <p><b>Share it</b> — code, QR or invite link.<br>The other device just opens the link.</p>
+        </div>
+        <div class="help-card">
+          <span class="help-n">3</span>
+          <p><b>Send anything</b> — photos, videos, audio.<br>It flies straight between the devices.</p>
+        </div>
+      </div>
+      <p class="help-note">🔒 Direct device-to-device over WebRTC.<br>Fast on the same Wi‑Fi, private, nothing stored on the server.</p>
+    </div>
+    <p class="foot-note">No sign‑up · no app install · free</p>
   </section>
 
   <!-- ============ ROOM ============ -->
@@ -60,6 +79,9 @@
           <span id="room-code">------</span>
           <button id="btn-copy" class="icon-btn" title="Copy code">
             <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12zm4 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h12z"/></svg>
+          </button>
+          <button id="btn-invite" class="icon-btn" title="Invite via link">
+            <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zm16 2v-.2L12 12 4 6.8V7l7 5 1 .7 1-.7 7-5z"/></svg>
           </button>
           <button id="btn-qr" class="icon-btn" title="Show QR">
             <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M3 5a2 2 0 0 1 2-2h4v2H5v4H3zm6 14H5v-4H3v4a2 2 0 0 0 2 2h4zm10 0h-4v-2h4v-2h2v4a2 2 0 0 1-2 2zM13 3h4a2 2 0 0 1 2 2v4h-2V5h-4zm2 8h2v2h-2zm2 2h2v2h-2zm-4-4h2v2h-2zm-4 2h2v2H9zm2 2h2v2h-2zm-4 4h2v2H7zm10 0h2v2h-2z"/></svg>

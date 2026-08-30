@@ -52,14 +52,33 @@ function waitFor(ws, pred, timeout) {
   try {
     await new Promise((r) => setTimeout(r, 900));
 
-    // ---- HTTP static serving ----
+    // ---- HTTP static serving + compression + security ----
     const home = await get(PORT, '/');
     if (home.status !== 200 || !home.data.includes('SwiftDrop')) throw new Error('index.html not served');
+    if (!home.ct.includes('text/html')) throw new Error('index.html content-type wrong');
     const css = await get(PORT, '/styles.css');
     if (css.status !== 200) throw new Error('css not served');
     const js = await get(PORT, '/client.js');
     if (js.status !== 200) throw new Error('js not served');
-    console.log('HTTP static serving OK');
+    const gz = new Promise((resolve, reject) => {
+      http.get({ host: 'localhost', port: PORT, path: '/client.js', headers: { 'Accept-Encoding': 'gzip' } }, (res) => {
+        const chunks = [];
+        res.on('data', (d) => chunks.push(d));
+        res.on('end', () => resolve({ encoding: res.headers['content-encoding'], len: Buffer.concat(chunks).length }));
+      }).on('error', reject);
+    });
+    const gzRes = await gz;
+    if (gzRes.encoding !== 'gzip') throw new Error('gzip not applied');
+    console.log('HTTP static serving + gzip OK (' + gzRes.len + ' bytes compressed)');
+
+    // ---- API endpoints ----
+    const cfg = await get(PORT, '/api/config');
+    const cfgJson = JSON.parse(cfg.data);
+    if (cfg.status !== 200 || !Array.isArray(cfgJson.rtc.iceServers) || !cfgJson.limits.relayMaxMB) throw new Error('config wrong');
+    console.log('/api/config OK (iceServers: ' + cfgJson.rtc.iceServers.length + ', relayMaxMB: ' + cfgJson.limits.relayMaxMB + ')');
+    const health = await get(PORT, '/api/health');
+    if (!health.data.includes('"ok":true')) throw new Error('health wrong');
+    console.log('/api/health OK');
 
     const a = await wsc();
     const b = await wsc();

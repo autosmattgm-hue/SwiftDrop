@@ -134,6 +134,50 @@ button { font-family: inherit; }
 .name-box input:focus { border-color: var(--accent); }
 
 .foot-note { text-align: center; color: var(--text-3); font-size: 12px; line-height: 1.6; margin-top: 40px; }
+
+/* ============ How it works ============ */
+.help { margin-top: 34px; text-align: left; }
+.help h2 {
+  font-size: 14px;
+  letter-spacing: 1.5px;
+  color: var(--text-3);
+  text-transform: uppercase;
+  font-weight: 700;
+  margin: 0 0 12px;
+  text-align: center;
+}
+.help-grid { display: flex; flex-direction: column; gap: 10px; }
+.help-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px;
+}
+.help-n {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--grad);
+  color: #fff;
+  font-weight: 800;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.help-card p { margin: 0; font-size: 13px; color: var(--text-2); line-height: 1.6; }
+.help-card p b { color: var(--text); }
+.help-note {
+  text-align: center;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.7;
+  margin: 16px 0 0;
+}
 /* ============ Room ============ */
 .room-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
 

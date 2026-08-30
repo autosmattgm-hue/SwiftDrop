@@ -79,9 +79,34 @@ function toast(msg) {
 }
 
 /* ---------------- state ---------------- */
-const STUN_SERVERS = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] }];
+const DEFAULT_ICE = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] }];
+let ICE_SERVERS = DEFAULT_ICE;
 const CHUNK_SIZE = 64 * 1024;
 const RTC_TIMEOUT_MS = 12000;
+const CFG = {
+  relayMaxMB: 256,       // will be refreshed from /api/config
+  maxPeersPerRoom: 10,
+  fetched: false,
+};
+
+// Pull servers + limits from the deployment so TURN and fair-use rules apply.
+function fetchConfig() {
+  if (!location || !location.origin || location.protocol === 'file:') return;
+  fetch(location.origin + '/api/config')
+    .then((r) => (r.ok ? r.json() : null))
+    .then((cfg) => {
+      if (!cfg) return;
+      CFG.fetched = true;
+      if (cfg.rtc && Array.isArray(cfg.rtc.iceServers) && cfg.rtc.iceServers.length) {
+        ICE_SERVERS = cfg.rtc.iceServers;
+      }
+      if (cfg.limits) {
+        if (typeof cfg.limits.relayMaxMB === 'number') CFG.relayMaxMB = cfg.limits.relayMaxMB;
+        if (typeof cfg.limits.maxPeersPerRoom === 'number') CFG.maxPeersPerRoom = cfg.limits.maxPeersPerRoom;
+      }
+    })
+    .catch(() => { /* defaults are fine */ });
+}
 
 const S = {
   ws: null,
@@ -235,6 +260,8 @@ function handleServerMsg(msg) {
       handleRtcMessage(msg.from, msg.msg);
       break;
     case 'ctrl':
+      // Server can notify us about our own streams (e.g. relay fair-use hit)
+      if (msg.from === S.peerId) { handleSelfCtrl(msg.msg); break; }
       handleCtrlMessage(msg.from, msg.msg);
       break;
   }
@@ -253,6 +280,22 @@ function handleRelayChunk(buf) {
   if (peerId && S.peers.has(peerId)) peer = S.peers.get(peerId);
   if (!peer) return;
   feedStreamData(peer, streamId, seq, flags, payload);
+}
+
+// Server pushed control about one of OUR outgoing streams (e.g. relay cap hit).
+function handleSelfCtrl(msg) {
+  if (!msg || msg.kind !== 'relay-lost') return;
+  const streamId = Number(msg.streamId);
+  for (const tf of S.transfers.values()) {
+    for (const st of tf.streams.values()) {
+      if (st.streamId === streamId && !st.finished) {
+        st.failed = true;
+        st.finished = true; // the sending while-loop checks this each iteration
+        tf.lastError = msg.reason === 'size' ? 'Too large for relay (server cap ' + CFG.relayMaxMB + ' MB). Devices failed to connect P2P — try a smaller file.' : 'Relay connection lost';
+        break;
+      }
+    }
+  }
 }
 /* ============================================================
    Room lifecycle
@@ -336,7 +379,7 @@ function createRtc(p) {
   if (p.destroyed) return;
   let pc;
   try {
-    pc = new RTCPeerConnection({ iceServers: STUN_SERVERS });
+    pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
   } catch (e) {
     maybeFallback(p);
     return;
@@ -577,6 +620,12 @@ async function startStream(tf, p) {
   updateTransferList();
 
   try {
+    // Pre-flight guard: relayed traffic respects the server fair-use cap.
+    if (p.mode === 'relay' && tf.size > CFG.relayMaxMB * 1024 * 1024) {
+      st.failed = true;
+      tf.lastError = 'Too large for relay (server cap ' + CFG.relayMaxMB + ' MB). Connect on the same network for direct P2P, or pick a smaller file.';
+      throw new Error('relay-size');
+    }
     // register relay route first (no-op in rtc mode)
     if (p.mode === 'relay') wsSend({ t: 'route', to: p.id, streamId, remove: false });
     // announce file (ordered before its chunks)
@@ -864,7 +913,8 @@ function updateTransferEl(tf) {
 
   r.status.className = 't-status ' + stCls;
   r.status.textContent = stTxt;
-  r.meta.textContent = formatBytes(tf.size) + (tf.startedPeers.size > 1 ? ' → ' + tf.startedPeers.size + ' devices' : '');
+  r.meta.textContent = formatBytes(tf.size) + (tf.startedPeers.size > 1 ? ' → ' + tf.startedPeers.size + ' devices' : '') +
+    (tf.status === 'failed' && tf.lastError ? ' · ' + tf.lastError : '');
   r.bar.style.width = pct + '%';
   r.left.textContent = (done ? '100%' : Math.floor(pct) + '%') + (tf.speed > 0 && !done ? ' · ' + formatSpeed(tf.speed) : '');
   r.right.textContent = formatBytes(Math.min(tf.sentBytes || 0, tf.size)) + ' / ' + formatBytes(tf.size);
@@ -1085,6 +1135,32 @@ function copyCode() {
   } else fail();
 }
 
+function copyLink() {
+  if (!S.roomId) return;
+  const link = roomJoinUrl();
+  const done = () => toast('Invite link copied ✓');
+  const fail = () => toast('Invite link: ' + link);
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(link).then(done).catch(fail);
+  } else fail();
+}
+
+function invitePeers() {
+  if (!S.roomId) return;
+  const link = roomJoinUrl();
+  const payload = {
+    title: 'SwiftDrop',
+    text: 'Join my SwiftDrop room — send files straight to me, device to device.',
+    url: link,
+  };
+  if (navigator.share) {
+    navigator.share(payload)
+      .catch(() => copyLink());
+  } else {
+    copyLink();
+  }
+}
+
 /* -------- QR camera scanning (optional) -------- */
 let scanStream = null;
 function scanQr() {
@@ -1223,6 +1299,7 @@ function init() {
   $('#join-code').addEventListener('keydown', (e) => { if (e.key === 'Enter') tryJoin(e.target.value); });
   $('#join-code').addEventListener('input', (e) => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); });
   $('#btn-copy').addEventListener('click', copyCode);
+  $('#btn-invite').addEventListener('click', invitePeers);
   $('#btn-qr').addEventListener('click', showQr);
   $('#btn-qr-close').addEventListener('click', hideQr);
   $('#qr-overlay').addEventListener('click', (e) => { if (e.target === $('#qr-overlay')) hideQr(); });
@@ -1238,6 +1315,7 @@ function init() {
 
   setupDrop();
   connectWs();
+  fetchConfig();
 
   // register service worker for installable PWA (only on https/localhost where supported)
   if ('serviceWorker' in navigator && location.protocol !== 'http:') {

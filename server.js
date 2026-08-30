@@ -15,6 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const os = require('os');
+const zlib = require('zlib');
 const { EventEmitter } = require('events');
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -26,12 +27,43 @@ const PORT = process.env.PORT || 3000;
 
 const ROOM_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no I,L,O,0,1
 const ROOM_CODE_LEN = 6;
-const MAX_PEERS_PER_ROOM = 10;
+const MAX_PEERS_PER_ROOM = parseInt(process.env.MAX_PEERS_PER_ROOM || '10', 10) || 10;
 const MAX_MSG_BYTES = 32 * 1024 * 1024; // server-side guard for single ws message
 const FRAME_HEADER_SIZE = 9; // streamId:4 + seq:4 + flags:1
 const IDLE_ROOM_MS = 24 * 60 * 60 * 1000; // rooms die after 24h of inactivity
 const HEARTBEAT_MS = 30000;
 const HEARTBEAT_TIMEOUT_MS = 90000;
+// Fair-use cap for files streamed through the server relay (bytes).
+// Direct Peer-to-Peer (WebRTC) transfers are never limited — only relayed
+// traffic touches this server's bandwidth.
+const RELAY_MAX_MB = parseFloat(process.env.RELAY_MAX_MB || '256') || 256;
+const RELAY_MAX_BYTES = RELAY_MAX_MB * 1024 * 1024;
+
+// ---- ICE / TURN servers for WebRTC (used by browsers via /api/config) ----
+// Override everything with ICE_SERVERS_JSON, or just add TURN credentials.
+function readIceServers() {
+  const stun = {
+    urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'],
+  };
+  if (process.env.ICE_SERVERS_JSON) {
+    try {
+      const arr = JSON.parse(process.env.ICE_SERVERS_JSON);
+      if (Array.isArray(arr) && arr.length) return arr;
+    } catch (e) { /* fall through */ }
+  }
+  const list = [stun];
+  if (process.env.TURN_URL && process.env.TURN_USERNAME && process.env.TURN_CREDENTIAL) {
+    list.push({
+      urls: process.env.TURN_URL.includes(',')
+        ? process.env.TURN_URL.split(',').map((s) => s.trim())
+        : process.env.TURN_URL,
+      username: process.env.TURN_USERNAME,
+      credential: process.env.TURN_CREDENTIAL,
+    });
+  }
+  return list;
+}
+const ICE_SERVERS = readIceServers();
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -270,8 +302,8 @@ function broadcast(room, type, payload, exceptPeerId) {
 function removeRoutesForPeer(roomId, peerId) {
   const routes = streamRoutes.get(roomId);
   if (!routes) return;
-  for (const [sid, to] of routes) {
-    if (to === peerId) routes.delete(sid);
+  for (const [sid, route] of routes) {
+    if (route.to === peerId) routes.delete(sid);
   }
 }
 
@@ -319,12 +351,36 @@ function onBinary(conn, buf) {
   if (buf.length < FRAME_HEADER_SIZE) return;
   const streamId = buf.readUInt32LE(0);
   const routes = streamRoutes.get(loc.roomId);
-  const to = routes && routes.get(streamId);
-  if (!to) return;
+  const route = routes && routes.get(streamId);
+  if (!route) return;
   const room = rooms.get(loc.roomId);
   if (!room) return;
-  const target = room.peers.get(to);
+  const target = room.peers.get(route.to);
   if (!target) return;
+
+  // Fair-use: stop a relayed stream once it exceeds the configured cap,
+  // tell the sender to give up and the receiver that the file was cancelled.
+  route.sent = (route.sent || 0) + buf.length;
+  if (route.sent > RELAY_MAX_BYTES) {
+    routes.delete(streamId);
+    try {
+      conn.sendText(JSON.stringify({
+        t: 'ctrl',
+        to: loc.peerId,
+        from: loc.peerId,
+        msg: { kind: 'relay-lost', streamId, fileId: route.fileId, reason: 'size' },
+      }));
+    } catch (e) { /* noop */ }
+    try {
+      target.conn.sendText(JSON.stringify({
+        t: 'ctrl',
+        from: loc.peerId,
+        msg: { kind: 'file-cancel', streamId, fileId: route.fileId, reason: 'size' },
+      }));
+    } catch (e) { /* noop */ }
+    return;
+  }
+
   target.conn.sendBinary(buf);
 }
 
@@ -398,8 +454,18 @@ function onJson(conn, msg) {
     const streamId = Number(msg.streamId) >>> 0;
     let routes = streamRoutes.get(loc.roomId);
     if (!routes) { routes = new Map(); streamRoutes.set(loc.roomId, routes); }
-    if (msg.remove) routes.delete(streamId);
-    else routes.set(streamId, to);
+    if (msg.remove) {
+      routes.delete(streamId);
+    } else {
+      routes.set(streamId, {
+        to,
+        sent: 0,
+        fileId: msg.fileId,
+        name: msg.name,
+        size: Number(msg.size) || 0,
+        mime: msg.mime,
+      });
+    }
     const target = room.peers.get(to);
     if (msg.forward && target && !msg.remove) {
       target.conn.sendText(JSON.stringify({
@@ -416,8 +482,45 @@ function send(conn, obj) {
   try { conn.sendText(JSON.stringify(obj)); } catch (e) { /* noop */ }
 }
 /* ----------------------------------------------------------------------- */
-/* Static file server                                                      */
+/* HTTP server (static files + JSON API)                                   */
 /* ----------------------------------------------------------------------- */
+
+function json(res, status, obj) {
+  const body = JSON.stringify(obj);
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store',
+    'Access-Control-Allow-Origin': '*',
+  });
+  res.end(body);
+}
+
+function handleApi(req, res) {
+  if (req.url.startsWith('/api/config')) {
+    return json(res, 200, {
+      name: 'SwiftDrop',
+      rtc: {
+        iceServers: ICE_SERVERS,
+      },
+      limits: {
+        relayMaxMB: RELAY_MAX_MB,
+        maxPeersPerRoom: MAX_PEERS_PER_ROOM,
+      },
+      version: '1.1.0',
+    });
+  }
+  if (req.url.startsWith('/api/health')) {
+    let peers = 0;
+    for (const room of rooms.values()) peers += room.peers.size;
+    return json(res, 200, {
+      ok: true,
+      rooms: rooms.size,
+      peers,
+      uptime: Math.round(process.uptime()),
+    });
+  }
+  return json(res, 404, { error: 'not found' });
+}
 
 function serveStatic(req, res) {
   let urlPath;
@@ -440,10 +543,39 @@ function serveStatic(req, res) {
       return res.end('Not found');
     }
     const ext = path.extname(file).toLowerCase();
-    res.writeHead(200, {
+    const isHtml = ext === '.html';
+    const isCompressible = /\.(html|js|css|json|svg|txt|md)$/i.test(ext);
+    const headers = {
       'Content-Type': MIME[ext] || 'application/octet-stream',
-      'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=3600',
-    });
+      'Cache-Control': isHtml ? 'no-cache' : 'public, max-age=3600',
+      'X-Content-Type-Options': 'nosniff',
+      'X-Frame-Options': 'DENY',
+      'Referrer-Policy': 'no-referrer',
+      'Permissions-Policy': 'camera=(self), microphone=(self)',
+      'Content-Security-Policy':
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+        "img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' ws: wss:; " +
+        "worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+    };
+    // HSTS once the app is served over HTTPS (directly or via a proxy)
+    const viaHttps = req.socket.encrypted || req.headers['x-forwarded-proto'] === 'https';
+    if (viaHttps) headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains';
+
+    const acceptsGzip = /gzip/i.test(req.headers['accept-encoding'] || '');
+    if (acceptsGzip && isCompressible) {
+      zlib.gzip(data, { level: 6 }, (gerr, gz) => {
+        if (gerr || gz.length >= data.length) {
+          res.writeHead(200, headers);
+          return res.end(data);
+        }
+        headers['Content-Encoding'] = 'gzip';
+        headers['Vary'] = 'Accept-Encoding';
+        res.writeHead(200, headers);
+        res.end(gz);
+      });
+      return;
+    }
+    res.writeHead(200, headers);
     res.end(data);
   });
 }
@@ -452,7 +584,10 @@ function serveStatic(req, res) {
 /* Boot                                                                     */
 /* ----------------------------------------------------------------------- */
 
-const server = http.createServer((req, res) => serveStatic(req, res));
+const server = http.createServer((req, res) => {
+  if (req.url.startsWith('/api/')) return handleApi(req, res);
+  return serveStatic(req, res);
+});
 
 const wss = new WsServer(server);
 
@@ -505,9 +640,14 @@ server.listen(PORT, () => {
     }
   }
   console.log('==================================================');
-  console.log('  SwiftDrop server is running');
+  console.log('  SwiftDrop server is running (v1.1.0)');
   console.log('  Local:   http://localhost:' + PORT);
   for (const a of addrs) console.log('  Network: http://' + a + ':' + PORT);
+  console.log('');
+  console.log('  Health:  /api/health   Config: /api/config');
+  console.log('  Relay fair-use cap: ' + RELAY_MAX_MB + ' MB per file');
+  console.log('  Max peers per room: ' + MAX_PEERS_PER_ROOM);
+  console.log('');
   console.log('  Open the page on any phone/computer and pair using a room code or QR.');
   console.log('==================================================');
 });

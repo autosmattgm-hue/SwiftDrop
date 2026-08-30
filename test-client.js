@@ -59,6 +59,7 @@ const sandbox = {
   window: documentStub, // `'BarcodeDetector' in window` -> false
   location: { protocol: 'http:', host: 'localhost:3210', origin: 'http://localhost:3210', pathname: '/', hash: '' },
   navigator: { serviceWorker: undefined, mediaDevices: undefined, clipboard: undefined },
+  fetch: () => Promise.reject(new Error('fetch not available in test')),
   localStorage: { getItem() { return ''; }, setItem() {} },
   WebSocket: WsMock,
   RTCPeerConnection: undefined,
@@ -101,7 +102,8 @@ try {
       'flushIce', 'handleServerMsg', 'handleRelayChunk', 'onPeerCtrl', 'feedStreamData',
       'finalizeStream', 'renderPeers', 'renderStatus', 'updateCounts', 'ensureSpeedTick',
       'ensureReceivingCard', 'updateReceivingCard', 'removeReceivingCard', 'completeReceivedItem',
-      'showQr', 'copyCode', 'resetToHome', 'setupDrop', 'connectWs', 'wsSend', 'wsSendBinary',
+      'showQr', 'copyCode', 'copyLink', 'invitePeers', 'fetchConfig', 'handleSelfCtrl',
+      'resetToHome', 'setupDrop', 'connectWs', 'wsSend', 'wsSendBinary',
       'esc', 'formatBytes', 'formatSpeed', 'uid', 'genStreamId'];
     let ok = true;
     for (const fn of need) {

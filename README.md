@@ -5,7 +5,7 @@ A **Xender-style** file sharing web app. Send files, videos, audio and anything 
 and are paired with a room code.
 
 Unlike classic upload-based sharing, data flows **peer-to-peer** over WebRTC, so it's
-extremely fast on the same Wi-Fi network and doesn't burn through a server's bandwidth.
+extremely fast and doesn't burn through a server's bandwidth.
 
 ![how](https://img.shields.io/badge/P2P-WebRTC-ff7a18)
 ![deps](https://img.shields.io/badge/dependencies-ZERO-brightgreen)
@@ -13,12 +13,13 @@ extremely fast on the same Wi-Fi network and doesn't burn through a server's ban
 ## Features
 
 - 📡 **Direct device-to-device transfer** via WebRTC DataChannels (nothing stored on the server)
-- 🛟 **Automatic relay fallback** through the WebSocket server when strict NATs block P2P
-- 🔢 **6-character room code** + **QR code** for painless pairing
+- 🛟 **Automatic relay fallback** through the WebSocket server when NATs block P2P
+- 🔢 **6-character room code** + **QR code** + **one-tap invite link** (deep-link auto-join)
 - 🖼️ Sends photos, videos, audio, documents, APKs — any file
 - 📊 Live progress bars, per-transfer and aggregate **speed (MB/s)**
 - 📁 Drag & drop, tap-to-browse, clipboard/paste support, multi-file sending
 - 📲 Mobile-first installable PWA (service worker + manifest)
+- 🌍 **Built for public hosting** — gzip, security headers, `/api/health`, env-configurable TURN, fair-use relay caps
 - 👤 Editable device names shown to peers
 
 ## Run it
@@ -51,9 +52,36 @@ local Wi-Fi at full speed.
 
 ### Deploying online (so any two people anywhere can connect)
 
-Push this folder to any Node host (Render, Railway, Fly, Heroku, a VPS…) and run
-`node server.js` with `PORT` set. HTTPS is ideal — WebRTC works best in a secure
-context, and the PWA becomes installable.
+The `Procfile` and `PORT` env support work with any Node host — **Render, Railway,
+Fly.io, Heroku, Koyeb, a VPS** (or even Cloudflare Workers if you proxy the static
+files — but keep Node as the WebSocket origin).
+
+Quick start on **Render** (free web service works fine):
+1. New Web Service → connect your repo → build command blank, start command `node server.js`.
+2. Deploy → you get `https://your-app.onrender.com`.
+3. That URL works perfectly over mobile data for *both* phones; transfers fall back to
+   the built-in relay when P2P can't break through carrier NATs.
+
+For **maximum P2P connectivity** (so phones on strict mobile networks connect directly
+and use zero relay bandwidth), add a TURN server. Free options exist (e.g.
+[Open Relay Project](https://www.metered.ca/tools/openrelay/), a small `coturn` VPS, or
+a hosted TURN). Then set env vars (see `.env.example`):
+
+```
+TURN_URL=turn:your.turn.host:3478?transport=udp,turn:your.turn.host:3478?transport=tcp
+TURN_USERNAME=user
+TURN_CREDENTIAL=pass
+```
+
+The app fetches these from `/api/config` automatically — no code changes needed.
+You can also override the whole ICE list with `ICE_SERVERS_JSON`.
+
+#### Fair use & monitoring
+- `/api/health` shows `{ ok, rooms, peers, uptime }`.
+- Relayed (server-assisted) transfers are capped at `RELAY_MAX_MB` (default 256 MB)
+  per file to protect your bandwidth — **direct P2P transfers are never limited**.
+  Senders see a clear error if they hit the cap.
+- Rooms hold only connection metadata; file bytes are never stored.
 
 ## How it works
 
