@@ -91,8 +91,8 @@ const CFG = {
 
 // Pull servers + limits from the deployment so TURN and fair-use rules apply.
 function fetchConfig() {
-  if (!location || !location.origin || location.protocol === 'file:') return;
-  fetch(location.origin + '/api/config')
+  if (!location || !location.host || location.protocol === 'file:') return;
+  fetch(location.protocol + '//' + getSignalingHost() + '/api/config')
     .then((r) => (r.ok ? r.json() : null))
     .then((cfg) => {
       if (!cfg) return;
@@ -159,9 +159,25 @@ function myDisplayName() {
 /* ============================================================
    WebSocket signaling layer
    ============================================================ */
+// Optional custom signaling server (for pages hosted on static hosts
+// like Vercel/Netlify that cannot run Node WebSockets). Stored per-device
+// and also carried in invite links via #join=…&server=… so the other
+// phone joins the right server automatically.
+function getSignalingHost() {
+  try {
+    const saved = localStorage.getItem('sd_server');
+    if (saved) {
+      const h = String(saved).trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+      if (h && h.indexOf('\\') === -1 && h.indexOf('/') === -1) return h;
+    }
+  } catch (e) { /* noop */ }
+  return location.host;
+}
+
 function wsUrl() {
+  const host = getSignalingHost();
   const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
-  return proto + location.host;
+  return proto + host;
 }
 
 function ensureWsConnected() {
@@ -211,6 +227,7 @@ function connectWs() {
     S.wsReady = true;
     clearTimeout(S.reconnectT);
     S.reconnectT = null;
+    clearStaticWarning();
     setHomeState(true, 'Connected');
     // Rejoin the room after a reconnect (same peerId so identity survives)
     if (S.roomId) wsSend({ t: 'join', roomId: S.roomId, peerId: S.peerId, name: myDisplayName() });
@@ -233,11 +250,39 @@ function connectWs() {
   ws.onclose = () => {
     S.wsReady = false;
     if (S.leaveFlag) return;
-    if (S.failedHandshake) { setHomeState(false, 'Can’t reach the server — is it running?'); }
-    else if (!S.roomId) setHomeState(false, 'Reconnecting…');
+    if (S.failedHandshake) {
+      setHomeState(false, '⚠ No SwiftDrop server here — static host detected. See the fix below.');
+      detectStaticHost();
+    } else if (!S.roomId) {
+      setHomeState(false, 'Reconnecting…');
+    }
     scheduleReconnect();
   };
   ws.onerror = () => { S.failedHandshake = true; try { ws.close(); } catch (e) { /* noop */ } };
+}
+
+let staticDetected = false;
+function detectStaticHost() {
+  if (staticDetected) return;
+  staticDetected = true;
+  const warn = $('#static-warning');
+  if (warn) warn.hidden = false;
+  if ($('#server-addr') && $('#server-addr').value.trim()) {
+    // user already pointed at a custom server — don't nag, just say retrying
+    const st = $('#home-status');
+    if (st) st.textContent = 'Connecting to ' + getSignalingHost() + '…';
+  }
+}
+
+function clearStaticWarning() {
+  staticDetected = false;
+  const warn = $('#static-warning');
+  if (warn) warn.hidden = true;
+}
+
+function reconnectDelay() {
+  if (staticDetected) return 8000; // slow down when clearly broken
+  return 1500;
 }
 
 function scheduleReconnect() {
@@ -246,7 +291,7 @@ function scheduleReconnect() {
     S.reconnectT = null;
     S.failedHandshake = false;
     connectWs();
-  }, 1500);
+  }, reconnectDelay());
 }
 
 // Persisted so reconnect loops don't show stale banners.
@@ -260,7 +305,8 @@ function setHomeState(ok, text) {
 // Show a toast the moment the user acts but the socket isn't ready.
 function feedbackIfNotReady() {
   if (S.wsReady) return true;
-  if (S.failedHandshake) toast('Server unreachable — start the server and refresh');
+  if (staticDetected) toast('No server connection — set the server address below or deploy SwiftDrop to a Node host');
+  else if (S.failedHandshake) toast('Server unreachable — check the server is running');
   else toast('Connecting… trying again in a moment');
   ensureWsConnected();
   return false;
@@ -1131,7 +1177,13 @@ function esc(s) {
    QR code
    ============================================================ */
 function roomJoinUrl() {
-  return location.origin + location.pathname + '#join=' + S.roomId;
+  const base = location.origin + location.pathname + '#join=' + S.roomId;
+  const host = getSignalingHost();
+  // If the page lives on a different host than the signaling server
+  // (e.g. Vercel frontend + Render server), put the server in the link
+  // so the other device connects to the right place automatically.
+  if (host && host !== location.host) return base + '&server=' + encodeURIComponent(host);
+  return base;
 }
 
 function drawQr(canvas, text) {
@@ -1360,6 +1412,19 @@ function init() {
     renderPeers();
   });
 
+  // Optional custom signaling-server address (static-host workaround).
+  const sa = $('#server-addr');
+  if (sa) {
+    try { sa.value = localStorage.getItem('sd_server') || ''; } catch (e) { /* noop */ }
+    sa.addEventListener('change', () => {
+      const val = sa.value.trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+      try { localStorage.setItem('sd_server', val); } catch (e) { /* noop */ }
+      clearStaticWarning();
+      connectWs();
+      fetchConfig();
+    });
+  }
+
   on('#btn-create', 'click', createRoom);
   on('#btn-join', 'click', () => tryJoin($('#join-code').value));
   on('#join-code', 'keydown', (e) => { if (e.key === 'Enter') tryJoin(e.target.value); });
@@ -1383,20 +1448,27 @@ function init() {
   });
 
   setupDrop();
+
+  // auto-join from QR/deep-link hash:  #join=ABC123 or #join=ABC123&server=host
+  const hashMatch = /#join=([A-Z0-9]{6})(?:&server=([^&]*))?/i.exec(location.hash);
+  if (hashMatch && hashMatch[2]) {
+    try { localStorage.setItem('sd_server', decodeURIComponent(hashMatch[2])); } catch (e) { /* noop */ }
+    const sa2 = $('#server-addr');
+    if (sa2) sa2.value = getSignalingHost();
+  }
+
   connectWs();
   fetchConfig();
 
-  // register service worker for installable PWA (only on https/localhost where supported)
-  if ('serviceWorker' in navigator && location.protocol !== 'http:') {
-    navigator.serviceWorker.register('sw.js').catch(() => { /* noop */ });
-  }
-
-  // auto-join from QR deep-link hash:  #join=ABC123
-  const hashMatch = /#join=([A-Z0-9]{6})/i.exec(location.hash);
   if (hashMatch) {
     S.peerId = null;
     const msg = { t: 'join', roomId: hashMatch[1].toUpperCase(), peerId: undefined, name: myDisplayName() };
     if (!wsSend(msg)) S.pendingJoin = msg;
+  }
+
+  // register service worker for installable PWA (only on https/localhost where supported)
+  if ('serviceWorker' in navigator && location.protocol !== 'http:') {
+    navigator.serviceWorker.register('sw.js').catch(() => { /* noop */ });
   }
 }
 

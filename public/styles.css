@@ -101,6 +101,31 @@ button { font-family: inherit; }
 .home-status.ok { color: var(--good); }
 .home-status.warn { color: var(--warn); }
 
+/* ============ Static-host warning ============ */
+.alert {
+  margin: 14px auto 0;
+  max-width: 440px;
+  background: rgba(255, 176, 32, .12);
+  border: 1px solid rgba(255, 176, 32, .5);
+  color: var(--text);
+  border-radius: 14px;
+  padding: 14px 16px;
+  text-align: left;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.alert b { color: var(--warn); }
+.alert p { margin: 8px 0 0; }
+.alert a { color: var(--accent); }
+.alert code {
+  background: rgba(255,255,255,.08);
+  padding: 1px 6px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.name-box em { font-style: normal; opacity: .7; }
+
 .btn-ghost {
   background: var(--card);
   color: var(--text);

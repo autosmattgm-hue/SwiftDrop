@@ -105,7 +105,8 @@ try {
       'showQr', 'copyCode', 'copyLink', 'invitePeers', 'fetchConfig', 'handleSelfCtrl',
       'resetToHome', 'setupDrop', 'connectWs', 'wsSend', 'wsSendBinary',
       'esc', 'formatBytes', 'formatSpeed', 'uid', 'genStreamId', 'on', 'hookGlobalErrors',
-      'setHomeState', 'feedbackIfNotReady', 'scheduleReconnect'];
+      'setHomeState', 'feedbackIfNotReady', 'scheduleReconnect', 'getSignalingHost',
+      'detectStaticHost', 'clearStaticWarning', 'reconnectDelay'];
     let ok = true;
     for (const fn of need) {
       if (typeof top[fn] !== 'function') { ok = false; console.error('  ✗ missing function: ' + fn); failures += 1; }

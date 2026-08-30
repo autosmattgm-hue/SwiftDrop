@@ -52,15 +52,32 @@ local Wi-Fi at full speed.
 
 ### Deploying online (so any two people anywhere can connect)
 
-The `Procfile` and `PORT` env support work with any Node host — **Render, Railway,
-Fly.io, Heroku, Koyeb, a VPS** (or even Cloudflare Workers if you proxy the static
-files — but keep Node as the WebSocket origin).
+> ⚠️ **Do NOT use Vercel / Netlify / GitHub Pages for the live app.** They are
+> **static hosts** — they can render the page but **cannot run SwiftDrop's Node
+> server**, so the WebSocket ("wss://…Unexpected response code: 200") and `/api/config`
+> (404) fail. SwiftDrop needs a host that runs a **persistent Node process**.
 
-Quick start on **Render** (free web service works fine):
-1. New Web Service → connect your repo → build command blank, start command `node server.js`.
-2. Deploy → you get `https://your-app.onrender.com`.
-3. That URL works perfectly over mobile data for *both* phones; transfers fall back to
-   the built-in relay when P2P can't break through carrier NATs.
+The `Procfile` and `PORT` env support work with any Node host — **Render, Railway,
+Fly.io, Heroku, Koyeb, a VPS**.
+
+**Fastest: one-click Render (free).** This repo includes `render.yaml`, so just:
+
+1. Push this folder to GitHub.
+2. On [render.com](https://render.com) → **New → Blueprint** → pick your repo.
+3. Deploy. Done — you get `https://your-app.onrender.com` with an automatic health check.
+
+Or manually: **New → Web Service** → repo → build command `npm install` →
+start command `node server.js` → Deploy.
+
+Share the Render URL with everyone — it works over mobile data for *both* phones;
+transfers fall back to the built-in relay when P2P can't break through carrier NATs.
+
+> **Keep your Vercel page?** You can leave the page on Vercel and point it at a
+> Node server using the **"Server address"** box on the home screen (enter e.g.
+> `https://your-app.onrender.com`). Invite links automatically carry the server
+> (`#join=CODE&server=…`) so the other phone joins the right backend. For a
+> no-friction experience, though, share the Render URL directly — it serves the
+> whole app itself.
 
 For **maximum P2P connectivity** (so phones on strict mobile networks connect directly
 and use zero relay bandwidth), add a TURN server. Free options exist (e.g.
