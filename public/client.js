@@ -123,6 +123,7 @@ const S = {
   reconnectT: null,
   leaveFlag: false,
   pendingJoin: null,
+  failedHandshake: false,
 };
 
 /* ---------------- Peer ---------------- */
@@ -192,18 +193,28 @@ function wsSendBinary(buf) {
 
 function connectWs() {
   try { if (S.ws) S.ws.close(); } catch (e) { /* noop */ }
-  const ws = new WebSocket(wsUrl());
+  let ws;
+  try {
+    ws = new WebSocket(wsUrl());
+  } catch (e) {
+    // e.g. opening the page via file:// -> ws:// with no host
+    setHomeState(false, 'Cannot open connection here — open via http://' + (location.host || 'localhost:3000'));
+    scheduleReconnect();
+    return;
+  }
   ws.binaryType = 'arraybuffer';
   S.ws = ws;
   S.wsReady = false;
+  setHomeState(false, 'Connecting…');
 
   ws.onopen = () => {
     S.wsReady = true;
     clearTimeout(S.reconnectT);
     S.reconnectT = null;
+    setHomeState(true, 'Connected');
     // Rejoin the room after a reconnect (same peerId so identity survives)
     if (S.roomId) wsSend({ t: 'join', roomId: S.roomId, peerId: S.peerId, name: myDisplayName() });
-    // flush any join requested before the socket was ready
+    // flush any join/create requested before the socket was ready
     if (S.pendingJoin) {
       const pj = S.pendingJoin;
       S.pendingJoin = null;
@@ -222,11 +233,37 @@ function connectWs() {
   ws.onclose = () => {
     S.wsReady = false;
     if (S.leaveFlag) return;
-    if (!S.reconnectT) {
-      S.reconnectT = setTimeout(() => { S.reconnectT = null; connectWs(); }, 1800);
-    }
+    if (S.failedHandshake) { setHomeState(false, 'Can’t reach the server — is it running?'); }
+    else if (!S.roomId) setHomeState(false, 'Reconnecting…');
+    scheduleReconnect();
   };
-  ws.onerror = () => { try { ws.close(); } catch (e) { /* noop */ } };
+  ws.onerror = () => { S.failedHandshake = true; try { ws.close(); } catch (e) { /* noop */ } };
+}
+
+function scheduleReconnect() {
+  if (S.reconnectT) return;
+  S.reconnectT = setTimeout(() => {
+    S.reconnectT = null;
+    S.failedHandshake = false;
+    connectWs();
+  }, 1500);
+}
+
+// Persisted so reconnect loops don't show stale banners.
+function setHomeState(ok, text) {
+  const el = $('#home-status');
+  if (!el) return;
+  el.textContent = text;
+  el.className = 'home-status ' + (ok ? 'ok' : 'warn');
+}
+
+// Show a toast the moment the user acts but the socket isn't ready.
+function feedbackIfNotReady() {
+  if (S.wsReady) return true;
+  if (S.failedHandshake) toast('Server unreachable — start the server and refresh');
+  else toast('Connecting… trying again in a moment');
+  ensureWsConnected();
+  return false;
 }
 
 function handleServerMsg(msg) {
@@ -1221,7 +1258,12 @@ function tryJoin(code) {
   if (clean.length !== 6) { toast('Enter a valid 6-character room code'); return; }
   $('#join-code').value = clean;
   const msg = { t: 'join', roomId: clean, peerId: S.peerId || undefined, name: myDisplayName() };
-  if (!wsSend(msg)) S.pendingJoin = msg;
+  if (!wsSend(msg)) {
+    S.pendingJoin = msg;
+    feedbackIfNotReady();
+  } else {
+    toast('Joining ' + clean + '…');
+  }
 }
 
 function resetToHome() {
@@ -1237,7 +1279,10 @@ function resetToHome() {
 function createRoom() {
   S.peerId = null;
   const msg = { t: 'create', name: myDisplayName() };
-  if (!wsSend(msg)) S.pendingJoin = msg;
+  if (!wsSend(msg)) {
+    S.pendingJoin = msg;
+    feedbackIfNotReady();
+  }
 }
 
 /* ============================================================
@@ -1246,6 +1291,7 @@ function createRoom() {
 function setupDrop() {
   const dz = $('#dropzone');
   const input = $('#file-input');
+  if (!dz || !input) return;
 
   dz.addEventListener('click', () => input.click());
   input.addEventListener('change', () => {
@@ -1282,34 +1328,57 @@ function setupDrop() {
 /* ============================================================
    Init
    ============================================================ */
+// Guarded wiring: a missing element must never take the app down.
+function on(sel, ev, fn) {
+  const el = $(sel);
+  if (el) el.addEventListener(ev, fn);
+  else console.warn('SwiftDrop: missing element', sel);
+}
+
+function hookGlobalErrors() {
+  if (!window.addEventListener) return;
+  window.addEventListener('error', (e) => {
+    try { toast('Something went wrong (' + (e.message || 'error') + ') — please refresh'); } catch (err) { /* noop */ }
+    console.error(e && e.error || e);
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    try { toast('Connection hiccup — retrying…'); } catch (err) { /* noop */ }
+  });
+}
+
 function init() {
+  hookGlobalErrors();
   S.myName = loadName() || ('Device ' + Math.floor(Math.random() * 9000 + 1000));
   saveName(S.myName);
-  $('#my-name').value = S.myName;
+  const nm = $('#my-name');
+  if (nm) nm.value = S.myName;
 
-  $('#my-name').addEventListener('input', () => {
-    S.myName = $('#my-name').value.trim() || 'Device';
+  on('#my-name', 'input', () => {
+    S.myName = nm.value.trim() || 'Device';
     saveName(S.myName);
     for (const p of S.peers.values()) sendCtrl(p, { kind: 'name', name: myDisplayName() });
     renderPeers();
   });
 
-  $('#btn-create').addEventListener('click', createRoom);
-  $('#btn-join').addEventListener('click', () => tryJoin($('#join-code').value));
-  $('#join-code').addEventListener('keydown', (e) => { if (e.key === 'Enter') tryJoin(e.target.value); });
-  $('#join-code').addEventListener('input', (e) => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); });
-  $('#btn-copy').addEventListener('click', copyCode);
-  $('#btn-invite').addEventListener('click', invitePeers);
-  $('#btn-qr').addEventListener('click', showQr);
-  $('#btn-qr-close').addEventListener('click', hideQr);
-  $('#qr-overlay').addEventListener('click', (e) => { if (e.target === $('#qr-overlay')) hideQr(); });
-  $('#btn-leave').addEventListener('click', () => { leaveRoom(); });
+  on('#btn-create', 'click', createRoom);
+  on('#btn-join', 'click', () => tryJoin($('#join-code').value));
+  on('#join-code', 'keydown', (e) => { if (e.key === 'Enter') tryJoin(e.target.value); });
+  on('#join-code', 'input', (e) => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); });
+  on('#btn-copy', 'click', copyCode);
+  on('#btn-invite', 'click', invitePeers);
+  on('#btn-qr', 'click', showQr);
+  on('#btn-qr-close', 'click', hideQr);
+  on('#qr-overlay', 'click', (e) => { if (e.target === $('#qr-overlay')) hideQr(); });
+  on('#btn-leave', 'click', () => { leaveRoom(); });
 
-  if ('BarcodeDetector' in window) $('#btn-scan').hidden = false;
-  $('#btn-scan').addEventListener('click', scanQr);
+  if ('BarcodeDetector' in window) {
+    const scanBtn = $('#btn-scan');
+    if (scanBtn) scanBtn.hidden = false;
+  }
+  on('#btn-scan', 'click', scanQr);
 
-  $('#transfer-list').addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-cancel]');
+  on('#transfer-list', 'click', (e) => {
+    const btn = e.target.closest ? e.target.closest('[data-cancel]') : null;
     if (btn) cancelTransfer(btn.dataset.cancel);
   });
 

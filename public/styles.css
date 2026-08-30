@@ -90,6 +90,17 @@ button { font-family: inherit; }
 .btn.big { width: 100%; padding: 16px; font-size: 17px; display: flex; align-items: center; justify-content: center; gap: 8px; }
 .btn-plus { font-size: 22px; line-height: 1; }
 
+.home-status {
+  margin: 12px auto 0;
+  max-width: 420px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+  opacity: .9;
+}
+.home-status.ok { color: var(--good); }
+.home-status.warn { color: var(--warn); }
+
 .btn-ghost {
   background: var(--card);
   color: var(--text);

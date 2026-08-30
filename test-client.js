@@ -104,7 +104,8 @@ try {
       'ensureReceivingCard', 'updateReceivingCard', 'removeReceivingCard', 'completeReceivedItem',
       'showQr', 'copyCode', 'copyLink', 'invitePeers', 'fetchConfig', 'handleSelfCtrl',
       'resetToHome', 'setupDrop', 'connectWs', 'wsSend', 'wsSendBinary',
-      'esc', 'formatBytes', 'formatSpeed', 'uid', 'genStreamId'];
+      'esc', 'formatBytes', 'formatSpeed', 'uid', 'genStreamId', 'on', 'hookGlobalErrors',
+      'setHomeState', 'feedbackIfNotReady', 'scheduleReconnect'];
     let ok = true;
     for (const fn of need) {
       if (typeof top[fn] !== 'function') { ok = false; console.error('  ✗ missing function: ' + fn); failures += 1; }
