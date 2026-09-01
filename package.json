@@ -6,7 +6,8 @@
   "type": "commonjs",
   "scripts": {
     "start": "node server.js",
-    "test": "node test.js && node test-client.js && node test-qr.js"
+    "offline": "node tools/bundle-offline.js && node offline-server.js",
+    "test": "node test.js && node test-client.js && node test-qr.js && node test-offline.js"
   },
   "engines": {
     "node": ">=18"

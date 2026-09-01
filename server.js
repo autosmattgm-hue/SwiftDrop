@@ -20,6 +20,11 @@ const { EventEmitter } = require('events');
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const PORT = process.env.PORT || 3000;
+// Single-file "offline" mode: when the app is packaged into one self-contained
+// JS file (tools/bundle-offline.js) the HTML is embedded via a global base64
+// string instead of the public/ folder.
+const BUNDLED_HTML_B64 = global.__SD_BUNDLED_HTML_B64 || null;
+const BUNDLED_HTML = BUNDLED_HTML_B64 ? Buffer.from(BUNDLED_HTML_B64, 'base64').toString('utf8') : null;
 
 /* ----------------------------------------------------------------------- */
 /* Configuration                                                           */
@@ -532,6 +537,23 @@ function serveStatic(req, res) {
   if (urlPath === '/') urlPath = '/index.html';
   if (urlPath.includes('..')) {
     res.writeHead(403); return res.end('Forbidden');
+  }
+  // Single-file offline mode: no public/ folder, serve the embedded page.
+  if (BUNDLED_HTML && (urlPath === '/index.html' || urlPath === '/')) {
+    const headers = {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-cache',
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy':
+        "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; " +
+        "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src self blob:; " +
+        "connect-src 'self' ws: wss:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+    };
+    return res.writeHead(200, headers).end(BUNDLED_HTML);
+  }
+  if (!PUBLIC_DIR || !fs.existsSync(path.join(PUBLIC_DIR, urlPath))) {
+    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+    return res.end('Not found');
   }
   const file = path.join(PUBLIC_DIR, urlPath);
   if (!file.startsWith(PUBLIC_DIR)) {

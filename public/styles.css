@@ -126,6 +126,36 @@ button { font-family: inherit; }
 
 .name-box em { font-style: normal; opacity: .7; }
 
+/* ============ Offline / LAN sharing box ============ */
+.lan-box {
+  margin-top: 18px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  text-align: left;
+  box-shadow: var(--shadow);
+}
+.lan-title { font-size: 13px; font-weight: 700; color: var(--good); }
+.lan-note { font-size: 12.5px; color: var(--text-2); margin: 8px 0 10px; line-height: 1.5; }
+.lan-note b { color: var(--text); }
+.lan-row { display: flex; gap: 8px; align-items: center; }
+#lan-url {
+  flex: 1;
+  min-width: 0;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  color: var(--text);
+  padding: 11px 12px;
+  font-size: 13px;
+  font-family: "SF Mono", Consolas, monospace;
+  outline: none;
+  -webkit-user-select: all;
+  user-select: all;
+}
+.lan-hint { font-size: 11.5px; color: var(--text-3); margin: 10px 0 0; line-height: 1.5; }
+
 .btn-ghost {
   background: var(--card);
   color: var(--text);

@@ -6,9 +6,9 @@
 <meta name="theme-color" content="#0b1020">
 <meta name="description" content="SwiftDrop — share files, videos and audio directly between devices. Peer-to-peer, no uploads, insanely fast.">
 <title>SwiftDrop — Share files instantly</title>
-<link rel="manifest" href="manifest.json?v=3">
+<link rel="manifest" href="manifest.json?v=5">
 <link rel="icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%23ff7a18'/><stop offset='1' stop-color='%23ff2d78'/></linearGradient></defs><rect width='100' height='100' rx='22' fill='url(%23g)'/><path d='M56 16 28 57h18l-4 28L70 44H52l4-28z' fill='white'/></svg>">
-<link rel="stylesheet" href="styles.css?v=3">
+<link rel="stylesheet" href="styles.css?v=5">
 </head>
 <body>
 <div id="app">
@@ -37,14 +37,15 @@
       <div id="home-status" class="home-status warn">Connecting…</div>
 
       <div id="static-warning" class="alert" hidden>
-        <b>⚠ SwiftDrop’s server can’t run on this page.</b>
-        <p>This looks like <b>static hosting</b> (Vercel/Netlify/GitHub Pages) — it can serve
-        the page but <b>not</b> SwiftDrop’s live server, so rooms and transfers can’t work here.</p>
-        <p><b>The fix (5 min, free):</b> deploy the full app to a Node host and share <i>that</i> URL:</p>
+        <b>⚠ SwiftDrop’s live server can’t run on this page.</b>
+        <p>This is <b>static hosting</b> (Vercel/Netlify/GitHub Pages). It shows the
+        page but <b>cannot run SwiftDrop’s server</b>, so rooms can’t be created here.</p>
+        <p><b>Option 1 (easiest):</b> enter your already-deployed server’s address in the
+        <b>Server address</b> box below (e.g. <code>yourapp.onrender.com</code>) and press <b>Enter</b>.</p>
+        <p><b>Option 2:</b> deploy the full app to a free Node host and share <i>that</i> link instead:</p>
         <p>1. Push this project to GitHub.<br>
-        2. On <a href="https://render.com" target="_blank" rel="noopener">render.com</a> → <b>New → Web Service</b> → connect your repo.<br>
-        3. Build command: <code>npm install</code> → Start command: <code>node server.js</code> → Deploy.<br>
-        4. Share the <code>https://yourapp.onrender.com</code> link.</p>
+        2. At <a href="https://render.com" target="_blank" rel="noopener">render.com</a> → <b>New → Blueprint</b> → connect your repo → Deploy.<br>
+        3. Share the <code>https://yourapp.onrender.com</code> link with everyone.</p>
         <p>See <b>README.md</b> for Railway / Fly.io / VPS options.</p>
       </div>
 
@@ -55,6 +56,21 @@
       </div>
 
       <button id="btn-scan" class="btn btn-ghost" hidden>&#128247; Scan QR</button>
+
+      <div id="lan-box" class="lan-box" hidden>
+        <div class="lan-title">📶 Offline sharing — same WiFi or hotspot</div>
+        <p class="lan-note">No internet needed. Open this address on the <b>other phone</b> to pair with you:</p>
+        <div class="lan-row">
+          <input id="lan-url" readonly autocomplete="off" spellcheck="false">
+          <button id="btn-copy-lan" class="icon-btn" title="Copy this address">
+            <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12zm4 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h12z"/></svg>
+          </button>
+          <button id="btn-lan-qr" class="icon-btn" title="Show QR">
+            <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M3 5a2 2 0 0 1 2-2h4v2H5v4H3zm6 14H5v-4H3v4a2 2 0 0 0 2 2h4zm10 0h-4v-2h4v-2h2v4a2 2 0 0 1-2 2zM13 3h4a2 2 0 0 1 2 2v4h-2V5h-4zm2 8h2v2h-2zm2 2h2v2h-2zm-4-4h2v2h-2zm-4 2h2v2H9zm2 2h2v2h-2zm-4 4h2v2H7zm10 0h2v2h-2z"/></svg>
+          </button>
+        </div>
+        <p class="lan-hint" id="lan-hint">How to host from a phone or PC with no internet: see the README / Android helper.</p>
+      </div>
 
       <div class="name-box">
         <label for="my-name">Your device name</label>
@@ -152,7 +168,7 @@
 
 <div id="toast" class="toast" hidden></div>
 
-<script src="vendor/qrcode.js?v=3"></script>
-<script src="client.js?v=3"></script>
+<script src="vendor/qrcode.js?v=5"></script>
+<script src="client.js?v=5"></script>
 </body>
 </html>

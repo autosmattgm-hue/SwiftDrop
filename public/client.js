@@ -262,34 +262,48 @@ function connectWs() {
 }
 
 let staticDetected = false;
+let connAttempts = 0;
+
 function detectStaticHost() {
-  if (staticDetected) return;
+  if (staticDetected && connAttempts <= 3) return; // only nag once during the first attempts
   staticDetected = true;
   const warn = $('#static-warning');
   if (warn) warn.hidden = false;
   if ($('#server-addr') && $('#server-addr').value.trim()) {
-    // user already pointed at a custom server — don't nag, just say retrying
+    // user already pointed at a custom server — don't nag, just retry
     const st = $('#home-status');
     if (st) st.textContent = 'Connecting to ' + getSignalingHost() + '…';
+  } else {
+    const st = $('#home-status');
+    if (st) st.textContent = '⚠ No SwiftDrop server here — enter a server address above or deploy SwiftDrop to a Node host';
   }
 }
 
 function clearStaticWarning() {
   staticDetected = false;
+  connAttempts = 0;
   const warn = $('#static-warning');
   if (warn) warn.hidden = true;
 }
 
 function reconnectDelay() {
-  if (staticDetected) return 8000; // slow down when clearly broken
+  if (staticDetected) return 8000; // slow down hard when clearly a broken host
   return 1500;
 }
 
 function scheduleReconnect() {
   if (S.reconnectT) return;
+  // If this is the page's own host and it's clearly not a SwiftDrop server,
+  // stop the auto-loop: waiting/retrying can't fix a static host. The user
+  // just needs to enter a server address (or use the Node-host URL).
+  if (staticDetected && connAttempts >= 2) {
+    setHomeState(false, 'Enter a server address above, or deploy SwiftDrop to Render — then press Create.');
+    return;
+  }
   S.reconnectT = setTimeout(() => {
     S.reconnectT = null;
     S.failedHandshake = false;
+    connAttempts += 1;
     connectWs();
   }, reconnectDelay());
 }
@@ -1213,6 +1227,29 @@ function showQr() {
   $('#qr-overlay').hidden = false;
 }
 
+// Offline/LAN: show a QR of the page URL itself so the other phone can
+// open the same local server page straight from its camera.
+function showPageQr() {
+  const url = location.href;
+  if (!url || url.indexOf('http') !== 0) { toast('Open this page over http:// first'); return; }
+  const title = $('#qr-overlay h3');
+  if (title) title.textContent = 'Scan to open this page';
+  $('#qr-code-text').textContent = url;
+  drawQr($('#qr-canvas'), url);
+  $('#qr-code-text').hidden = true;
+  $('#qr-overlay').hidden = false;
+  $('#btn-qr-close').addEventListener('click', hideQr, { once: true });
+}
+
+function copyPageLink() {
+  const url = location.href;
+  const done = () => toast('Address copied ✓');
+  const fail = () => toast('Address: ' + url);
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(done).catch(fail);
+  } else fail();
+}
+
 function hideQr() { $('#qr-overlay').hidden = true; }
 
 function copyCode() {
@@ -1415,18 +1452,35 @@ function init() {
   // Optional custom signaling-server address (static-host workaround).
   const sa = $('#server-addr');
   if (sa) {
-    try { sa.value = localStorage.getItem('sd_server') || ''; } catch (e) { /* noop */ }
-    sa.addEventListener('change', () => {
+    const applyServerAddress = () => {
       const val = sa.value.trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
       try { localStorage.setItem('sd_server', val); } catch (e) { /* noop */ }
       clearStaticWarning();
       connectWs();
       fetchConfig();
-    });
+      if (val) toast('Connecting to ' + val + '…');
+      else toast('Server address cleared — using this page’s host');
+    };
+    try { sa.value = localStorage.getItem('sd_server') || ''; } catch (e) { /* noop */ }
+    sa.addEventListener('change', applyServerAddress);
+    sa.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); applyServerAddress(); } });
   }
 
   on('#btn-create', 'click', createRoom);
   on('#btn-join', 'click', () => tryJoin($('#join-code').value));
+
+  // Offline/LAN sharing box: shows the local page URL so a phone on the same
+  // WiFi/hotspot can open the exact same server page (no internet needed).
+  const lanBox = $('#lan-box');
+  const lanUrl = $('#lan-url');
+  if (lanBox && lanUrl && location && typeof location.href === 'string' &&
+      location.href.indexOf('http') === 0 && location.hostname !== 'localhost' &&
+      !/(^|\.)vercel\.app$|netlify|github\.io/i.test(location.hostname || '')) {
+    lanUrl.value = location.href;
+    lanBox.hidden = false;
+    on('#btn-copy-lan', 'click', copyPageLink);
+    on('#btn-lan-qr', 'click', showPageQr);
+  }
   on('#join-code', 'keydown', (e) => { if (e.key === 'Enter') tryJoin(e.target.value); });
   on('#join-code', 'input', (e) => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); });
   on('#btn-copy', 'click', copyCode);

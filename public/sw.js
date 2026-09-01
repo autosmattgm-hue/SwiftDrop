@@ -1,6 +1,6 @@
 'use strict';
 /* SwiftDrop service worker — caches the app shell for instant loading. */
-const CACHE = 'swiftdrop-v4';
+const CACHE = 'swiftdrop-v6';
 const SHELL = ['./', './index.html', './styles.css', './client.js', './vendor/qrcode.js', './manifest.json', './icon.svg'];
 
 self.addEventListener('install', (e) => {

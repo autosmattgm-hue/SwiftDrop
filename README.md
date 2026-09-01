@@ -39,10 +39,28 @@ Then open the printed URL — e.g. `http://localhost:3000` — on **both** devic
 ## Tests
 
 ```bash
-node test.js          # server end-to-end (rooms, signaling, binary relay, cleanup)
-node test-client.js   # client smoke test (loads client.js in a VM with DOM stubs)
-node test-qr.js       # vendored QR library generates a real QR matrix
+node test.js            # server end-to-end (rooms, signaling, binary relay, cleanup)
+node test-client.js     # client smoke test (loads client.js in a VM with DOM stubs)
+node test-qr.js         # vendored QR library generates a real QR matrix
+node test-offline.js    # single-file offline-server.js (page + rooms + relay)
 ```
+
+### 📶 Phone‑to‑phone with NO internet (WiFi / hotspot)
+
+Transfer files device‑to‑device with **no cloud, no accounts, no internet** —
+just put both phones on the same WiFi or **a phone hotspot**:
+
+1. Build the single‑file app: `node tools/bundle-offline.js` → creates **`offline-server.js`** (the whole app in one ~260 KB file).
+2. Put that file on one phone (USB / WhatsApp / email) and follow **`ANDROID-OFFLINE.md`** (install Termux once, then `node offline-server.js`).
+3. Turn on that phone's **hotspot**; the other phone opens the printed `http://192.168.x.x:3000` link.
+4. Pair with a room code / QR and send — files go **directly between the phones**.
+
+Or host from any laptop on the same network — `node offline-server.js` — and both
+phones open `http://<laptop-ip>:3000`.
+
+> Browsers can't do Bluetooth file transfer or discover each other without a tiny
+> signaling handshake, so one device runs this one-file server **locally**. The file
+> bytes still flow straight between the phones; nothing leaves your network.
 
 ### Sharing with phones on the same Wi-Fi
 
